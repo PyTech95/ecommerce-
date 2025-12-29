@@ -1,0 +1,414 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 36 33% 97%;
+        --foreground: 210 20% 25%;
+        --card: 0 0% 100%;
+        --card-foreground: 210 20% 25%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 210 20% 25%;
+        --primary: 27 30% 22%;
+        --primary-foreground: 36 33% 97%;
+        --secondary: 30 15% 92%;
+        --secondary-foreground: 27 30% 22%;
+        --muted: 30 15% 92%;
+        --muted-foreground: 215 10% 45%;
+        --accent: 20 70% 55%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 30 10% 85%;
+        --input: 30 10% 85%;
+        --ring: 27 30% 22%;
+        --radius: 0.25rem;
+        --chart-1: 12 76% 61%;
+        --chart-2: 173 58% 39%;
+        --chart-3: 197 37% 24%;
+        --chart-4: 43 74% 66%;
+        --chart-5: 27 87% 67%;
+    }
+    .dark {
+        --background: 27 30% 12%;
+        --foreground: 36 33% 97%;
+        --card: 27 30% 15%;
+        --card-foreground: 36 33% 97%;
+        --popover: 27 30% 15%;
+        --popover-foreground: 36 33% 97%;
+        --primary: 36 33% 97%;
+        --primary-foreground: 27 30% 22%;
+        --secondary: 27 20% 20%;
+        --secondary-foreground: 36 33% 97%;
+        --muted: 27 20% 20%;
+        --muted-foreground: 30 10% 65%;
+        --accent: 20 70% 55%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 27 20% 25%;
+        --input: 27 20% 25%;
+        --ring: 36 33% 97%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+        font-family: 'Manrope', sans-serif;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Playfair Display', serif;
+    }
+    code, .mono {
+        font-family: 'JetBrains Mono', monospace;
+    }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}
+
+/* Hide external badges */
+#emergent-badge,
+[id*="emergent"],
+a[href*="emergent.sh"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 1024px) {
+    .page-title {
+        font-size: 1.5rem;
+    }
+    
+    .page-header {
+        margin-bottom: 1.5rem;
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .preview-container {
+        padding: 1rem;
+    }
+    
+    .preview-paper {
+        width: 100%;
+        min-height: auto;
+        padding: 10mm;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-title {
+        font-size: 1.25rem;
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stat-card {
+        padding: 1rem;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    .form-section {
+        padding: 1rem;
+    }
+    
+    /* Stack buttons on mobile */
+    .button-group-mobile {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .button-group-mobile > * {
+        width: 100%;
+    }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Rich text editor styles */
+.ql-container {
+    font-family: 'Manrope', sans-serif !important;
+    font-size: 14px !important;
+}
+
+.ql-editor {
+    min-height: 120px;
+}
+
+.ql-toolbar {
+    border-top-left-radius: var(--radius);
+    border-top-right-radius: var(--radius);
+    border-color: hsl(var(--border)) !important;
+    background: hsl(var(--muted));
+}
+
+.ql-container {
+    border-bottom-left-radius: var(--radius);
+    border-bottom-right-radius: var(--radius);
+    border-color: hsl(var(--border)) !important;
+}
+
+/* PDF Preview styles */
+.pdf-preview {
+    background: white;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    aspect-ratio: 1 / 1.414;
+}
+
+/* Animation classes */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Card hover effect */
+.card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Status badge colors */
+.status-draft {
+    @apply bg-yellow-100 text-yellow-800;
+}
+
+.status-submitted {
+    @apply bg-blue-100 text-blue-800;
+}
+
+.status-in-production {
+    @apply bg-purple-100 text-purple-800;
+}
+
+.status-done {
+    @apply bg-green-100 text-green-800;
+}
+
+/* Print styles - hide navigation and show only content */
+@media print {
+    /* Explicitly hide elements with print-hidden class */
+    .print-hidden {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+    }
+    
+    /* HIDE EVERYTHING that's not the preview content */
+    nav, 
+    .sidebar,
+    aside,
+    header,
+    footer,
+    [data-testid="back-btn"],
+    [data-testid="edit-btn"],
+    [data-testid="print-btn"],
+    [data-testid="email-btn"],
+    [data-testid="share-btn"],
+    [data-testid="download-btn"],
+    [data-testid="sidebar"],
+    .page-header,
+    button,
+    a:not(.preview-paper a),
+    /* Hide the entire sidebar navigation */
+    .fixed.inset-y-0,
+    .lg\\:flex.lg\\:w-64,
+    [class*="sidebar"],
+    [class*="navigation"],
+    /* Hide mobile menu */
+    .lg\\:hidden,
+    /* Hide any overlays */
+    [class*="overlay"],
+    [class*="backdrop"] {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+    }
+    
+    /* Reset everything */
+    html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background: white !important;
+        overflow: visible !important;
+    }
+    
+    /* Remove ALL layout constraints */
+    #root, #root > div, .flex.min-h-screen, main {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        margin-left: 0 !important;
+        padding-left: 0 !important;
+    }
+    
+    /* Hide the content wrapper spacing */
+    .print-content {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    
+    .print-content > * {
+        margin: 0 !important;
+    }
+    
+    /* ONLY show the preview pages */
+    .preview-page-container {
+        display: block !important;
+        visibility: visible !important;
+        page-break-after: always !important;
+        page-break-inside: avoid !important;
+        break-after: page !important;
+        break-inside: avoid !important;
+        margin: 0 !important;
+        padding: 5mm !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        height: auto !important;
+        overflow: visible !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: white !important;
+    }
+    
+    .preview-page-container:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+    }
+    
+    /* Preview paper styling for print */
+    .preview-paper {
+        display: block !important;
+        visibility: visible !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        transform: none !important;
+    }
+    
+    /* Ensure images print correctly */
+    img {
+        max-width: 100% !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    
+    /* Table fixes */
+    table {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    
+    /* Preserve background colors */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+    
+    /* Hide scrollbars */
+    ::-webkit-scrollbar {
+        display: none !important;
+    }
+    
+    /* Force white background */
+    .bg-muted, .bg-background {
+        background: white !important;
+    }
+}
+
+/* Preview Paper A4 Styling */
+.preview-paper {
+    background: white;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    max-width: 210mm;
+    padding: 10mm 15mm;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+/* Print-specific page setup */
+@page {
+    size: A4;
+    margin: 8mm;
+}
+
+/* Additional print fixes for content scaling */
+@media print {
+    /* Scale preview content to fit A4 */
+    .preview-paper {
+        transform: scale(0.85);
+        transform-origin: top center;
+    }
+    
+    /* Reduce image sizes for print */
+    .preview-paper img {
+        max-height: 200px !important;
+    }
+    
+    /* Compact the notes section */
+    .preview-paper .prose {
+        font-size: 11px !important;
+        line-height: 1.3 !important;
+    }
+}
