@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ordersApi } from '../lib/api';
+import { ordersApi,productsApi } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -59,20 +59,270 @@ export default function OrderDetail() {
 
   const loadOrder = async () => {
     try {
-      const response = await ordersApi.getById(id);
-      setOrder(response.data);
+      const [orderRes, productsRes] = await Promise.all([
+        ordersApi.getById(id),
+        productsApi.getAll(),
+      ]);
+      
+      // Auto-fill missing product_image from catalog for existing items
+      const orderData = orderRes.data;
+      const productsList = productsRes.data;
+      
+      if (orderData.items && orderData.items.length > 0) {
+        orderData.items = orderData.items.map(item => {
+          // If item doesn't have product_image, try to get it from catalog
+          if (!item.product_image && item.product_code) {
+            const catalogProduct = productsList.find(p => p.product_code === item.product_code);
+            if (catalogProduct && catalogProduct.image) {
+              return { ...item, product_image: catalogProduct.image };
+            }
+          }
+          return item;
+        });
+      }
+      
+      setOrder(orderData);
     } catch (error) {
-      console.error('Error loading order:', error);
-      toast.error('Failed to load order');
+      console.error('Error loading preview:', error);
+      toast.error('Failed to load preview');
       navigate('/orders');
     } finally {
       setLoading(false);
     }
   };
 
+
   const handleExportPdf = () => {
-    window.open(ordersApi.exportPdf(id), '_blank');
-    toast.success('PDF download started');
+    // Generate clean HTML for PDF - same as print
+    const logoUrl = "https://customer-assets.emergentagent.com/job_furnipdf-maker/artifacts/mdh71t2g_WhatsApp%20Image%202025-12-22%20at%202.24.36%20PM.jpeg";
+    
+    // Generate HTML for each item
+    const itemsHtml = order.items.map((item, index) => {
+      const cbm = item.cbm_auto 
+        ? ((item.height_cm || 0) * (item.depth_cm || 0) * (item.width_cm || 0) / 1000000).toFixed(2)
+        : item.cbm;
+      
+      const mainImage = item.product_image || (item.images && item.images.length > 0 ? item.images[0] : null);
+      const additionalImages = item.product_image ? (item.images || []) : (item.images || []).slice(1);
+      
+      // RESPONSIVE SIZING - Calculate based on actual content
+      const hasAdditionalImages = additionalImages.length > 0;
+      const additionalImageCount = Math.min(additionalImages.length, 4);
+      const notesLength = item.notes ? item.notes.length : 0;
+      const hasLeather = item.leather_image || item.leather_code;
+      const hasFinish = item.finish_image || item.finish_code;
+      
+      // A4 usable height: ~750px (277mm - header - footer - table)
+      // Base allocations
+      let mainImageHeight = 340;
+      let additionalImageSize = 216;
+      let swatchHeight = 100;
+      
+      // Responsive adjustments based on content density
+      if (hasAdditionalImages) {
+        // More additional images = smaller sizes
+        if (additionalImageCount >= 3) {
+          mainImageHeight = 280;
+          additionalImageSize = 160;
+        } else if (additionalImageCount >= 2) {
+          mainImageHeight = 300;
+          additionalImageSize = 180;
+        } else {
+          mainImageHeight = 320;
+          additionalImageSize = 200;
+        }
+        
+        // Long notes further reduce image sizes
+        if (notesLength > 300) {
+          mainImageHeight -= 40;
+          additionalImageSize -= 30;
+        } else if (notesLength > 150) {
+          mainImageHeight -= 20;
+          additionalImageSize -= 15;
+        }
+      } else {
+        // No additional images - more space for main image
+        if (notesLength > 300) {
+          mainImageHeight = 300;
+        } else if (notesLength > 150) {
+          mainImageHeight = 320;
+        }
+      }
+      
+      // Adjust swatch height based on content
+      if (hasLeather && hasFinish && hasAdditionalImages) {
+        swatchHeight = 80;
+      } else if (hasLeather && hasFinish) {
+        swatchHeight = 100;
+      }
+      
+      return `
+        <div class="page" style="page-break-after: always; padding: 8mm; box-sizing: border-box; height: 277mm; overflow: hidden;">
+          <!-- Header -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 10px; border-bottom: 2px solid #3d2c1e;">
+            <img src="${logoUrl}" alt="JAIPUR" style="height: 60px; object-fit: contain;" />
+            <table style="border: 1px solid #3d2c1e; border-collapse: collapse; font-size: 10px;">
+              <tr style="border-bottom: 1px solid #3d2c1e;">
+                <td style="padding: 3px 8px; background: #f5f0eb; font-weight: bold; border-right: 1px solid #3d2c1e;">ENTRY DATE</td>
+                <td style="padding: 3px 8px; min-width: 90px;">${formatDateDDMMYYYY(order.entry_date)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #3d2c1e;">
+                <td style="padding: 3px 8px; background: #f5f0eb; font-weight: bold; border-right: 1px solid #3d2c1e;">INFORMED TO FACTORY</td>
+                <td style="padding: 3px 8px;">${formatDateDDMMYYYY(order.factory_inform_date || order.entry_date)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #3d2c1e;">
+                <td style="padding: 3px 8px; background: #f5f0eb; font-weight: bold; border-right: 1px solid #3d2c1e;">FACTORY</td>
+                <td style="padding: 3px 8px;">${order.factory || '-'}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #3d2c1e;">
+                <td style="padding: 3px 8px; background: #f5f0eb; font-weight: bold; border-right: 1px solid #3d2c1e;">SALES ORDER REF</td>
+                <td style="padding: 3px 8px; font-family: monospace;">${order.sales_order_ref || '-'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 3px 8px; background: #f5f0eb; font-weight: bold; border-right: 1px solid #3d2c1e;">BUYER PO</td>
+                <td style="padding: 3px 8px; font-family: monospace;">${order.buyer_po_ref || '-'}</td>
+              </tr>
+            </table>
+          </div>
+          
+          <!-- Images Section -->
+          <div style="display: flex; gap: 10px; padding: 6px 0;">
+            <!-- Main Product Image - 75% -->
+            <div style="width: 75%;">
+              ${mainImage 
+                ? `<div style="border: 1px solid #ddd; border-radius: 4px; padding: 6px; background: white; display: flex; align-items: center; justify-content: center; height: ${mainImageHeight}px;">
+                    <img src="${mainImage}" alt="Product" style="max-width: 100%; max-height: ${mainImageHeight - 12}px; object-fit: contain;" />
+                  </div>`
+                : `<div style="width: 100%; height: ${mainImageHeight}px; display: flex; align-items: center; justify-content: center; background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; color: #888;">No Image Available</div>`
+              }
+              ${additionalImages.length > 0 ? `
+                <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                  ${additionalImages.slice(0, 4).map(img => `
+                    <img src="${img}" alt="Additional" style="width: ${additionalImageSize}px; height: ${additionalImageSize}px; object-fit: cover; border: 1px solid #ddd; border-radius: 4px; flex-shrink: 0;" />
+                  `).join('')}
+                  ${additionalImages.length > 4 ? `
+                    <div style="width: ${additionalImageSize}px; height: ${additionalImageSize}px; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666;">+${additionalImages.length - 4} more</div>
+                  ` : ''}
+                </div>
+              ` : ''}
+            </div>
+            
+            <!-- Material Swatches - 25% -->
+            <div style="width: 25%; display: flex; flex-direction: column; gap: 6px;">
+              ${item.leather_image || item.leather_code ? `
+                <div style="border: 1px solid #ddd; border-radius: 4px; padding: 6px; background: #fafafa;">
+                  ${item.leather_image 
+                    ? `<img src="${item.leather_image}" alt="Leather" style="width: 100%; height: ${swatchHeight}px; object-fit: cover; border-radius: 4px; margin-bottom: 4px;" />`
+                    : `<div style="width: 100%; height: ${swatchHeight}px; background: linear-gradient(135deg, #8B4513, #A0522D); border-radius: 4px; margin-bottom: 4px;"></div>`
+                  }
+                  <p style="font-size: 9px; color: #666; text-align: center; text-transform: uppercase; margin: 0;">Leather</p>
+                  <p style="font-size: 10px; font-weight: 600; text-align: center; margin: 0;">${item.leather_code || '-'}</p>
+                </div>
+              ` : ''}
+              ${item.finish_image || item.finish_code ? `
+                <div style="border: 1px solid #ddd; border-radius: 4px; padding: 6px; background: #fafafa;">
+                  ${item.finish_image 
+                    ? `<img src="${item.finish_image}" alt="Finish" style="width: 100%; height: ${swatchHeight}px; object-fit: cover; border-radius: 4px; margin-bottom: 4px;" />`
+                    : `<div style="width: 100%; height: ${swatchHeight}px; background: linear-gradient(135deg, #D4A574, #C4956A); border-radius: 4px; margin-bottom: 4px;"></div>`
+                  }
+                  <p style="font-size: 9px; color: #666; text-align: center; text-transform: uppercase; margin: 0;">Finish</p>
+                  <p style="font-size: 10px; font-weight: 600; text-align: center; margin: 0;">${item.finish_code || '-'}</p>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+          
+          <!-- Notes Section -->
+          <div style="border: 1px solid #3d2c1e; border-radius: 4px; margin-bottom: 6px; width: 100%;">
+            <div style="background: #3d2c1e; color: white; padding: 6px 10px; font-weight: 600; font-size: 12px;">Notes:</div>
+            <div style="padding: 8px 10px; font-size: 15px; line-height: 1.4;">
+              ${item.notes ? `<div>${item.notes}</div>` : `
+                <div style="color: #888;">
+                  ${item.category ? `<p style="margin: 2px 0;">• Category: ${item.category}</p>` : ''}
+                  ${item.leather_code ? `<p style="margin: 2px 0;">• Leather: ${item.leather_code}</p>` : ''}
+                  ${item.finish_code ? `<p style="margin: 2px 0;">• Finish: ${item.finish_code}</p>` : ''}
+                  ${item.color_notes ? `<p style="margin: 2px 0;">• Color Notes: ${item.color_notes}</p>` : ''}
+                  ${item.wood_finish ? `<p style="margin: 2px 0;">• Wood Finish: ${item.wood_finish}</p>` : ''}
+                  ${!item.category && !item.leather_code && !item.finish_code && !item.color_notes && !item.wood_finish ? '<p style="font-style: italic;">No notes added</p>' : ''}
+                </div>
+              `}
+            </div>
+          </div>
+          
+          <!-- Details Table - Compact -->
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 2px solid #3d2c1e;">
+            <thead>
+              <tr style="background: #3d2c1e; color: white;">
+                <th style="padding: 6px; text-align: left; border-right: 1px solid #5a4a3a;" rowspan="2">ITEM CODE</th>
+                <th style="padding: 6px; text-align: left; border-right: 1px solid #5a4a3a;" rowspan="2">DESCRIPTION</th>
+                <th style="padding: 6px; text-align: center; border-right: 1px solid #5a4a3a;" colspan="3">SIZE (cm)</th>
+                <th style="padding: 6px; text-align: center; border-right: 1px solid #5a4a3a;" rowspan="2">CBM</th>
+                <th style="padding: 6px; text-align: center;" rowspan="2">Qty</th>
+              </tr>
+              <tr style="background: #5a4a3a; color: white; font-size: 9px;">
+                <th style="padding: 4px; border-right: 1px solid #6a5a4a;">H</th>
+                <th style="padding: 4px; border-right: 1px solid #6a5a4a;">D</th>
+                <th style="padding: 4px; border-right: 1px solid #6a5a4a;">W</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-top: 1px solid #3d2c1e;">
+                <td style="padding: 6px; font-family: monospace; font-weight: bold; border-right: 1px solid #ddd;">${item.product_code || '-'}</td>
+                <td style="padding: 6px; border-right: 1px solid #ddd;">${item.description || '-'}${item.color_notes ? ` <span style="color: #666;">(${item.color_notes})</span>` : ''}</td>
+                <td style="padding: 6px; text-align: center; border-right: 1px solid #ddd;">${item.height_cm || 0}</td>
+                <td style="padding: 6px; text-align: center; border-right: 1px solid #ddd;">${item.depth_cm || 0}</td>
+                <td style="padding: 6px; text-align: center; border-right: 1px solid #ddd;">${item.width_cm || 0}</td>
+                <td style="padding: 6px; text-align: center; font-family: monospace; border-right: 1px solid #ddd;">${cbm}</td>
+                <td style="padding: 6px; text-align: center; font-weight: bold;">${item.quantity || 1} Pcs</td>
+              </tr>
+            </tbody>
+          </table>
+          
+          <!-- Footer -->
+          <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px solid #ddd; font-size: 9px; color: #888;">
+            <span>Buyer: ${order.buyer_name || '-'} • PO: ${order.buyer_po_ref || '-'}</span>
+            <span>Page ${index + 1} of ${order.items.length}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Open new window with the PDF-ready HTML
+    const pdfWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    pdfWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Production Sheet - ${order.sales_order_ref || 'Order'}</title>
+        <style>
+          @page { size: A4; margin: 0; }
+          body { margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+          .page:last-child { page-break-after: auto; }
+          img { max-width: 100%; }
+          /* Notes styling for bullet points and bold text */
+          ul { margin: 0; padding-left: 20px; }
+          li { margin: 4px 0; }
+          p { margin: 4px 0; }
+          strong { font-weight: 700; }
+        </style>
+      </head>
+      <body>
+        ${itemsHtml}
+        <script>
+          // Auto-trigger print dialog for "Save as PDF"
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 500);
+          };
+        </script>
+      </body>
+      </html>
+    `);
+    
+    pdfWindow.document.close();
+    toast.success('PDF preview opened - Select "Save as PDF" in print dialog');
   };
 
   const handleWhatsAppShare = async () => {
