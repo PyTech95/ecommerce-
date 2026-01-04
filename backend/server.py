@@ -1404,148 +1404,220 @@ async def bulk_create_products(products: List[ProductCreate]):
         created.append(product)
     return {"message": f"{len(created)} products created", "products": created}
 
+import re
+import io
+import pandas as pd
+from fastapi import UploadFile, File, HTTPException
+
+HEADER_KEYWORDS = {
+    "productcode", "product code", "itemcode", "item code", "code",
+    "description", "desc",
+    "size", "h", "d", "w", "cbm",
+    "photo link", "photolink", "image", "image url", "image_url",
+    "fob", "warehouse"
+}
+
+def _norm_col(s: str) -> str:
+    s = str(s or "").strip().lower()
+    # collapse spaces, remove most punctuation
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[^a-z0-9 ]+", "", s)
+    return s.strip()
+
+def _canon_col(s: str) -> str:
+    # stronger normalization: remove spaces entirely
+    return _norm_col(s).replace(" ", "")
+
+def _find_header_row(df_raw: pd.DataFrame, max_rows: int = 20) -> int:
+    best_idx = 0
+    best_score = -1
+
+    rows_to_check = min(max_rows, len(df_raw))
+    for i in range(rows_to_check):
+        row_vals = df_raw.iloc[i].tolist()
+        joined = " ".join(_norm_col(v) for v in row_vals if str(v).strip().lower() != "nan")
+
+        score = 0
+        for kw in HEADER_KEYWORDS:
+            if kw in joined:
+                score += 1
+
+        # extra points if it clearly contains "product code"/"description"
+        if "product code" in joined or "productcode" in joined:
+            score += 3
+        if "description" in joined:
+            score += 2
+
+        if score > best_score:
+            best_score = score
+            best_idx = i
+
+    return best_idx
+
+COLUMN_MAPPING_CANON = {
+    # product code
+    "productcode": "product_code",
+    "itemcode": "product_code",
+    "code": "product_code",
+
+    # description
+    "description": "description",
+    "desc": "description",
+
+    # size
+    "size": "size",
+    "sizeincm": "size",
+    "sizecm": "size",
+
+    # dimensions
+    "h": "height_cm",
+    "height": "height_cm",
+    "heightcm": "height_cm",
+    "d": "depth_cm",
+    "depth": "depth_cm",
+    "depthcm": "depth_cm",
+    "w": "width_cm",
+    "width": "width_cm",
+    "widthcm": "width_cm",
+
+    # cbm
+    "cbm": "cbm",
+
+    # prices
+    "fobindiaprice": "fob_price_usd",     # fallback if currency symbol removed
+    "fobindiapriceusd": "fob_price_usd",
+    "fobusd": "fob_price_usd",
+    "fob": "fob_price_usd",               # loose mapping
+    "fobindiapricegbp": "fob_price_gbp",
+    "fobgbp": "fob_price_gbp",
+
+    # warehouse
+    "warehouseprice700": "warehouse_price_1",
+    "warehouseprice2000": "warehouse_price_2",
+    "warehouseprice1": "warehouse_price_1",
+    "warehouseprice2": "warehouse_price_2",
+
+    # image
+    "photolink": "image_url",
+    "photo link": "image_url",
+    "image": "image_url",
+    "imageurl": "image_url",
+    "image url": "image_url",
+    "picture": "image_url",
+    "photo": "image_url",
+
+    # category
+    "category": "category",
+}
+
 @api_router.post("/products/upload-excel")
 async def upload_products_excel(file: UploadFile = File(...)):
-    """Upload products from Excel file with optional image URLs"""
-    if not file.filename.endswith(('.xlsx', '.xls')):
+    if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="File must be an Excel file (.xlsx or .xls)")
-    
+
     try:
-        # Read Excel file
         contents = await file.read()
-        df = pd.read_excel(io.BytesIO(contents))
-        
-        # Check if first row contains actual headers (e.g., "Product Code", "Description")
-        # This handles Excel files with merged header cells or wrong header detection
-        first_row_values = df.iloc[0].astype(str).str.lower().tolist()
-        header_keywords = ['product code', 'description', 'cbm', 'photo link', 'h', 'd', 'w']
-        has_header_in_first_row = any(keyword in ' '.join(first_row_values) for keyword in header_keywords)
-        
-        if has_header_in_first_row or any('unnamed' in str(col).lower() for col in df.columns):
-            # First row contains actual headers - use it and skip
-            new_headers = df.iloc[0].astype(str).tolist()
-            df = df.iloc[1:].reset_index(drop=True)
-            df.columns = new_headers
-        
-        # Normalize column names (handle various formats)
-        column_mapping = {
-            'product code': 'product_code',
-            'productcode': 'product_code',
-            'item code': 'product_code',
-            'itemcode': 'product_code',
-            'code': 'product_code',
-            'description': 'description',
-            'desc': 'description',
-            'size': 'size',
-            'size ( in cm )': 'size',
-            'size (cm)': 'size',
-            'h': 'height_cm',
-            'height': 'height_cm',
-            'height_cm': 'height_cm',
-            'd': 'depth_cm',
-            'depth': 'depth_cm',
-            'depth_cm': 'depth_cm',
-            'w': 'width_cm',
-            'width': 'width_cm',
-            'width_cm': 'width_cm',
-            'cbm': 'cbm',
-            'fob india price $': 'fob_price_usd',
-            'fob $': 'fob_price_usd',
-            'fob_price_usd': 'fob_price_usd',
-            'fob india price £': 'fob_price_gbp',
-            'fob £': 'fob_price_gbp',
-            'fob_price_gbp': 'fob_price_gbp',
-            'warehouse price £700': 'warehouse_price_1',
-            'warehouse_price_1': 'warehouse_price_1',
-            'warehouse price £2000': 'warehouse_price_2',
-            'warehouse_price_2': 'warehouse_price_2',
-            'photo link': 'image_url',
-            'photolink': 'image_url',
-            'image': 'image_url',
-            'image_url': 'image_url',
-            'photo': 'image_url',
-            'picture': 'image_url',
-            'category': 'category',
-        }
-        
-        # Rename columns
-        df.columns = df.columns.str.lower().str.strip()
-        df = df.rename(columns=column_mapping)
-        
+
+        # Read raw (no header) so we can find the real header row reliably
+        df_raw = pd.read_excel(io.BytesIO(contents), header=None)
+
+        header_row_idx = _find_header_row(df_raw, max_rows=20)
+
+        headers = df_raw.iloc[header_row_idx].tolist()
+        df = df_raw.iloc[header_row_idx + 1:].reset_index(drop=True)
+        df.columns = headers
+
+        # Normalize + rename columns
+        df.columns = [_canon_col(c) for c in df.columns]
+
+        # Apply mapping with canonical keys
+        rename_map = {}
+        for c in df.columns:
+            mapped = COLUMN_MAPPING_CANON.get(c)
+            if mapped:
+                rename_map[c] = mapped
+        df = df.rename(columns=rename_map)
+
+        # If still no product_code, try one more heuristic:
+        # find a column that looks like codes (strings with hyphens) and use it
+        if "product_code" not in df.columns:
+            for c in df.columns:
+                sample = df[c].dropna().astype(str).head(10).tolist()
+                if sample and sum(("-" in s) for s in sample) >= max(2, len(sample)//2):
+                    df = df.rename(columns={c: "product_code"})
+                    break
+
         created_products = []
         skipped = 0
         errors = []
-        
+
+        def safe_float(val, default=0.0):
+            try:
+                if pd.isna(val):
+                    return default
+                s = str(val).strip()
+                if s == "" or s.lower() == "nan":
+                    return default
+                return float(s)
+            except:
+                return default
+
         for idx, row in df.iterrows():
             try:
-                # Skip rows without product code
-                product_code = str(row.get('product_code', '')).strip()
-                if not product_code or product_code == 'nan' or product_code == '':
+                product_code = str(row.get("product_code", "")).strip()
+                if not product_code or product_code.lower() == "nan":
                     skipped += 1
                     continue
-                
-                # Parse numeric fields safely
-                def safe_float(val, default=0):
-                    try:
-                        if pd.isna(val) or val == '' or val == 'nan':
-                            return default
-                        return float(val)
-                    except:
-                        return default
-                
-                # Build product data
+
                 product_data = {
-                    'product_code': product_code.upper(),
-                    'description': str(row.get('description', '')).strip() if pd.notna(row.get('description')) else '',
-                    'size': str(row.get('size', '')).strip() if pd.notna(row.get('size')) else '',
-                    'category': str(row.get('category', '')).strip() if pd.notna(row.get('category')) else '',
-                    'height_cm': safe_float(row.get('height_cm')),
-                    'depth_cm': safe_float(row.get('depth_cm')),
-                    'width_cm': safe_float(row.get('width_cm')),
-                    'cbm': safe_float(row.get('cbm')),
-                    'fob_price_usd': safe_float(row.get('fob_price_usd')),
-                    'fob_price_gbp': safe_float(row.get('fob_price_gbp')),
-                    'warehouse_price_1': safe_float(row.get('warehouse_price_1')),
-                    'warehouse_price_2': safe_float(row.get('warehouse_price_2')),
-                    'image': '',
-                    'images': []
+                    "product_code": product_code.upper(),
+                    "description": str(row.get("description", "")).strip() if pd.notna(row.get("description")) else "",
+                    "size": str(row.get("size", "")).strip() if pd.notna(row.get("size")) else "",
+                    "category": str(row.get("category", "")).strip() if pd.notna(row.get("category")) else "",
+                    "height_cm": safe_float(row.get("height_cm")),
+                    "depth_cm": safe_float(row.get("depth_cm")),
+                    "width_cm": safe_float(row.get("width_cm")),
+                    "cbm": safe_float(row.get("cbm")),
+                    "fob_price_usd": safe_float(row.get("fob_price_usd")),
+                    "fob_price_gbp": safe_float(row.get("fob_price_gbp")),
+                    "warehouse_price_1": safe_float(row.get("warehouse_price_1")),
+                    "warehouse_price_2": safe_float(row.get("warehouse_price_2")),
+                    "image": "",
+                    "images": [],
                 }
-                
-                # Handle image URL - try to fetch and convert to base64
-                image_url = str(row.get('image_url', '')).strip() if pd.notna(row.get('image_url')) else ''
-                if image_url and image_url != 'nan' and image_url != '#REF!' and image_url.startswith('http'):
+
+                image_url = str(row.get("image_url", "")).strip() if pd.notna(row.get("image_url")) else ""
+                if image_url and image_url.lower() not in {"nan", "#ref!"} and image_url.startswith("http"):
                     try:
-                        async with httpx.AsyncClient(timeout=10.0) as client:
-                            response = await client.get(image_url)
-                            if response.status_code == 200:
-                                content_type = response.headers.get('content-type', 'image/jpeg')
-                                if 'image' in content_type:
-                                    image_base64 = base64.b64encode(response.content).decode('utf-8')
-                                    product_data['image'] = f"data:{content_type};base64,{image_base64}"
-                    except Exception as img_error:
-                        # Log but continue without image
+                        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                            resp = await client.get(image_url)
+                            if resp.status_code == 200:
+                                ctype = resp.headers.get("content-type", "")
+                                if "image" in ctype:
+                                    b64 = base64.b64encode(resp.content).decode("utf-8")
+                                    product_data["image"] = f"data:{ctype};base64,{b64}"
+                    except:
                         pass
-                
-                # Create product
+
                 product = Product(**product_data)
                 doc = product.model_dump()
                 await db.products.insert_one(doc)
-                created_products.append({
-                    'product_code': product.product_code,
-                    'description': product.description
-                })
-                
+
+                created_products.append({"product_code": product.product_code, "description": product.description})
+
             except Exception as row_error:
-                errors.append(f"Row {idx + 2}: {str(row_error)}")
-        
+                errors.append(f"Row {idx + 1}: {str(row_error)}")
+
         return {
             "message": f"Successfully imported {len(created_products)} products",
             "created": len(created_products),
             "skipped": skipped,
-            "errors": errors[:10] if errors else [],  # Return first 10 errors only
-            "products": created_products[:20]  # Return first 20 products
+            "errors": errors[:10],
+            "products": created_products[:20],
+            "detected_header_row": header_row_idx + 1,  # 1-based for user friendliness
+            "detected_columns": list(df.columns),
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing Excel file: {str(e)}")
 
